@@ -43,7 +43,7 @@
             background-color: #bbbbbb;
             align-self: flex-end;
         }
-        .naya-message {
+        .tora-message {
             background-color: #444;
             align-self: flex-start;
         }
@@ -82,7 +82,7 @@
     <button id="clear-button" onclick="clearChat()">清除聊天记录</button>
     <div id="chat-container">
         <div id="chat-box">
-            <div class="message pusa-message">找我有什么事？</div>
+            <div class="message pusa-message">有什么事？</div>
         </div>
         <div id="input-container">
             <input type="text" id="message-input" placeholder="输入消息..." onkeydown="handleKeyDown(event)">
@@ -99,16 +99,15 @@
         let userTokenUsage = 0;
         let isAwaitingResponse = false;
 
-        // 读取用户的对话历史（但不存入 system 设定）
-        if (localStorage.getItem("chat_history")) {
-            conversation = JSON.parse(localStorage.getItem("chat_history"));
+        if (localStorage.getItem(STORAGE_KEY)) {
+            conversation = JSON.parse(localStorage.getItem(STORAGE_KEY));
             conversation.forEach(msg => {
                 if (msg.role !== "system") {
                     appendMessage(msg.role === "user" ? "user-message" : "pusa-message", msg.content);
                 }
             });
         } else {
-            conversation.push({ role: "assistant", content: "找我有什么事？" });
+            conversation.push({ role: "assistant", content: "有什么事？" });
         }
 
         function sendMessage() {
@@ -123,16 +122,15 @@
             isAwaitingResponse = true;
             document.getElementById("send-button").disabled = true;
 
-            // 限制 Token 使用量
             let estimatedTokens = message.length / 4;
-            if (userTokenUsage + estimatedTokens > 5000) {//每小时对话上限
+            if (userTokenUsage + estimatedTokens > 5000) {
                 appendMessage("pusa-message", "你已经超出了每小时的对话上限。");
                 return;
             }
             userTokenUsage += estimatedTokens;
 
             conversation.push({ role: "user", content: message });
-            localStorage.setItem("chat_history", JSON.stringify(conversation));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(conversation));
 
             appendMessage("pusa-message", "输入中...");
             fetchResponse();
@@ -140,8 +138,6 @@
 
         function fetchResponse() {
             let requestPayload = [...conversation];
-
-            // 只在第一次对话时添加 system 设定
             if (!conversation.some(msg => msg.role === "system")) {
                 requestPayload.unshift(SYSTEM_PROMPT);
             }
@@ -155,21 +151,20 @@
                 body: JSON.stringify({
                     model: "deepseek-chat",
                     messages: requestPayload,
-                    max_tokens: 200 //最大回复量
+                    max_tokens: 200
                 })
             })
             .then(response => response.json())
             .then(data => {
                 let reply = data.choices[0].message.content;
-                document.querySelector(".pusa-message:last-child").remove(); // 删除“输入中...”
+                document.querySelector(".pusa-message:last-child").remove();
                 appendMessage("pusa-message", reply);
                 conversation.push({ role: "assistant", content: reply });
-                localStorage.setItem("chat_history", JSON.stringify(conversation));
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(conversation));
                 isAwaitingResponse = false;
                 document.getElementById("send-button").disabled = false;
             })
             .catch(error => {
-                console.error("Error:", error);
                 appendMessage("pusa-message", "出现了一些问题，请稍后再试。");
                 isAwaitingResponse = false;
                 document.getElementById("send-button").disabled = false;
@@ -192,9 +187,9 @@
         }
 
         function clearChat() {
-            if (confirm("确定要清除聊天记录吗？这将重置所有对话。")) {
-                localStorage.removeItem("chat_history");
-                location.reload(); // 刷新页面
+            if (confirm("确定要清除聊天记录吗？")) {
+                localStorage.removeItem(STORAGE_KEY);
+                location.reload();
             }
         }
     </script>
