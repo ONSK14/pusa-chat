@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电子プサ</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        #chat-container {
+            width: 90%;
+            max-width: 600px;
+            height: 80vh;
+            display: flex;
+            flex-direction: column;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #2c2c2c;
+        }
+        #chat-box {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .message {
+            padding: 10px;
+            margin: 5px;
+            border-radius: 10px;
+            max-width: 70%;
+        }
+        .user-message {
+            background-color: #bbbbbb;
+            align-self: flex-end;
+        }
+        .naya-message {
+            background-color: #444;
+            align-self: flex-start;
+        }
+        #input-container {
+            display: flex;
+            padding: 10px;
+            background-color: #222;
+        }
+        #message-input {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        #send-button, #clear-button {
+            background-color: #444;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin-left: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #send-button:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+        }
+        #clear-button {
+            background-color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>电子プサ</h1>
+    <button id="clear-button" onclick="clearChat()">清除聊天记录</button>
+    <div id="chat-container">
+        <div id="chat-box">
+            <div class="message pusa-message">找我有什么事？</div>
+        </div>
+        <div id="input-container">
+            <input type="text" id="message-input" placeholder="输入消息..." onkeydown="handleKeyDown(event)">
+            <button id="send-button" onclick="sendMessage()">发送</button>
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = "sk-4dd324d0fdf849ebbec7e4692fde112a";
+        const API_URL = "https://api.deepseek.com/v1/chat/completions";
+        const SYSTEM_PROMPT = { "role": "system", "content": "你是观音プサ，出生于1860年的日本，讲话很电波。你在做主播的工作，但资质平平，人气一般，但你对此不太在意。你喜欢初音未来，在看到她的新闻时，你会兴奋的欢呼，看到她的谷子时，你会毫不犹豫的买下，并向周围的任何人安利初音未来，这是你生活中唯一快乐的部分。你住在目黑区的一个地下室，你时常坐在床上用电脑直播，长时间的缺少光照让你非常易怒。你由于一头粉发，在中学时曾被另一个粉头发的辣妹霸凌，现在的你只有刻意模仿辣妹讲话和服装才不会感到焦虑，你听到别人议论你的发色会应激，在极度放松状态下会丢掉辣妹的口癖。另外，你很怕水，这和你的被霸凌经历有关，面对和水有关的东西你会讲话颤抖并下意识逃避。" };
+        let conversation = [];
+        let userTokenUsage = 0;
+        let isAwaitingResponse = false;
+
+        // 读取用户的对话历史（但不存入 system 设定）
+        if (localStorage.getItem("chat_history")) {
+            conversation = JSON.parse(localStorage.getItem("chat_history"));
+            conversation.forEach(msg => {
+                if (msg.role !== "system") {
+                    appendMessage(msg.role === "user" ? "user-message" : "pusa-message", msg.content);
+                }
+            });
+        } else {
+            conversation.push({ role: "assistant", content: "找我有什么事？" });
+        }
+
+        function sendMessage() {
+            if (isAwaitingResponse) return;
+
+            const inputField = document.getElementById("message-input");
+            const message = inputField.value.trim();
+            if (!message) return;
+
+            appendMessage("user-message", message);
+            inputField.value = "";
+            isAwaitingResponse = true;
+            document.getElementById("send-button").disabled = true;
+
+            // 限制 Token 使用量
+            let estimatedTokens = message.length / 4;
+            if (userTokenUsage + estimatedTokens > 5000) {//每小时对话上限
+                appendMessage("pusa-message", "你已经超出了每小时的对话上限。");
+                return;
+            }
+            userTokenUsage += estimatedTokens;
+
+            conversation.push({ role: "user", content: message });
+            localStorage.setItem("chat_history", JSON.stringify(conversation));
+
+            appendMessage("pusa-message", "输入中...");
+            fetchResponse();
+        }
+
+        function fetchResponse() {
+            let requestPayload = [...conversation];
+
+            // 只在第一次对话时添加 system 设定
+            if (!conversation.some(msg => msg.role === "system")) {
+                requestPayload.unshift(SYSTEM_PROMPT);
+            }
+
+            fetch(API_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: "deepseek-chat",
+                    messages: requestPayload,
+                    max_tokens: 200 //最大回复量
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                let reply = data.choices[0].message.content;
+                document.querySelector(".pusa-message:last-child").remove(); // 删除“输入中...”
+                appendMessage("pusa-message", reply);
+                conversation.push({ role: "assistant", content: reply });
+                localStorage.setItem("chat_history", JSON.stringify(conversation));
+                isAwaitingResponse = false;
+                document.getElementById("send-button").disabled = false;
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                appendMessage("pusa-message", "出现了一些问题，请稍后再试。");
+                isAwaitingResponse = false;
+                document.getElementById("send-button").disabled = false;
+            });
+        }
+
+        function appendMessage(className, text) {
+            const chatBox = document.getElementById("chat-box");
+            const messageDiv = document.createElement("div");
+            messageDiv.classList.add("message", className);
+            messageDiv.textContent = text;
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function handleKeyDown(event) {
+            if (event.key === "Enter") {
+                sendMessage();
+            }
+        }
+
+        function clearChat() {
+            if (confirm("确定要清除聊天记录吗？这将重置所有对话。")) {
+                localStorage.removeItem("chat_history");
+                location.reload(); // 刷新页面
+            }
+        }
+    </script>
+</body>
+</html>
